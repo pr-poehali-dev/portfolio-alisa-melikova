@@ -1,39 +1,47 @@
 import { useState, useEffect } from 'react';
 import Icon from '@/components/ui/icon';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 
-const projects = [
+interface Project {
+  id: string;
+  title: string;
+  year: string;
+  description: string;
+  cover: string;
+  images: string[];
+}
+
+const initialProjects: Project[] = [
   {
     id: 'pink-dress',
     title: 'Розовое платье',
     year: '2023',
     description: 'Современная постановка о женской идентичности и самовыражении через театральный костюм.',
-    images: [
-      'https://cdn.poehali.dev/projects/d06bc7b2-909d-4086-acb0-64c61016a4de/files/f861db0c-19a3-4663-8821-997f8359715f.jpg'
-    ]
+    cover: 'https://cdn.poehali.dev/projects/d06bc7b2-909d-4086-acb0-64c61016a4de/files/f861db0c-19a3-4663-8821-997f8359715f.jpg',
+    images: []
   },
   {
     id: 'lubyanka-makeup',
     title: 'Лубянский Гримёр',
     year: '2022',
     description: 'Историческая драма о судьбе театрального гримёра в период политических репрессий.',
-    images: [
-      'https://cdn.poehali.dev/projects/d06bc7b2-909d-4086-acb0-64c61016a4de/files/d5f53d2e-a152-4e5e-a33c-524734e47d03.jpg'
-    ]
+    cover: 'https://cdn.poehali.dev/projects/d06bc7b2-909d-4086-acb0-64c61016a4de/files/d5f53d2e-a152-4e5e-a33c-524734e47d03.jpg',
+    images: []
   },
   {
     id: 'lavr',
     title: 'Лавр',
     year: '2023',
     description: 'Адаптация романа Евгения Водолазкина о духовном пути средневекового лекаря.',
-    images: [
-      'https://cdn.poehali.dev/projects/d06bc7b2-909d-4086-acb0-64c61016a4de/files/23ede909-1acd-4253-8c82-715ba1db7b62.jpg'
-    ]
+    cover: 'https://cdn.poehali.dev/projects/d06bc7b2-909d-4086-acb0-64c61016a4de/files/23ede909-1acd-4253-8c82-715ba1db7b62.jpg',
+    images: []
   },
   {
     id: 'king',
     title: 'Я убил царя',
     year: '2022',
     description: 'Постановка о последних днях императорской семьи и моральном выборе.',
+    cover: '',
     images: []
   },
   {
@@ -41,6 +49,7 @@ const projects = [
     title: 'Эзоп',
     year: '2021',
     description: 'Философская притча о создателе басен, его мудрости и трагической судьбе.',
+    cover: '',
     images: []
   },
   {
@@ -48,23 +57,87 @@ const projects = [
     title: 'Преступление и Наказание',
     year: '2023',
     description: 'Визуальная интерпретация классического романа Достоевского для современной сцены.',
+    cover: '',
     images: []
   }
 ];
 
 export default function Index() {
   const [activeSection, setActiveSection] = useState('portfolio');
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [projects, setProjects] = useState<Project[]>(initialProjects);
+  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
 
   useEffect(() => {
     setIsVisible(true);
+    const saved = localStorage.getItem('portfolio-projects');
+    if (saved) {
+      setProjects(JSON.parse(saved));
+    }
   }, []);
+
+  const saveProjects = (updatedProjects: Project[]) => {
+    setProjects(updatedProjects);
+    localStorage.setItem('portfolio-projects', JSON.stringify(updatedProjects));
+  };
 
   const scrollToSection = (section: string) => {
     setActiveSection(section);
     const element = document.getElementById(section);
     element?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleImageUpload = (projectId: string, type: 'cover' | 'gallery', e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const imageUrl = event.target?.result as string;
+      const updatedProjects = projects.map(p => {
+        if (p.id === projectId) {
+          if (type === 'cover') {
+            return { ...p, cover: imageUrl };
+          } else {
+            return { ...p, images: [...p.images, imageUrl] };
+          }
+        }
+        return p;
+      });
+      saveProjects(updatedProjects);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeImage = (projectId: string, imageIndex: number) => {
+    const updatedProjects = projects.map(p => {
+      if (p.id === projectId) {
+        return { ...p, images: p.images.filter((_, i) => i !== imageIndex) };
+      }
+      return p;
+    });
+    saveProjects(updatedProjects);
+  };
+
+  const openGallery = (project: Project) => {
+    if (project.images.length > 0) {
+      setSelectedProject(project);
+      setCurrentImageIndex(0);
+    }
+  };
+
+  const nextImage = () => {
+    if (selectedProject && currentImageIndex < selectedProject.images.length - 1) {
+      setCurrentImageIndex(currentImageIndex + 1);
+    }
+  };
+
+  const prevImage = () => {
+    if (currentImageIndex > 0) {
+      setCurrentImageIndex(currentImageIndex - 1);
+    }
   };
 
   return (
@@ -75,7 +148,13 @@ export default function Index() {
             <h1 className="text-2xl lg:text-3xl font-serif font-light tracking-wide">
               Алиса Меликова
             </h1>
-            <div className="flex gap-8">
+            <div className="flex items-center gap-8">
+              <button
+                onClick={() => setIsEditMode(!isEditMode)}
+                className="text-sm px-4 py-2 rounded-lg border border-border hover:bg-muted transition-colors"
+              >
+                {isEditMode ? 'Готово' : 'Редактировать'}
+              </button>
               {['portfolio', 'bio', 'about', 'contacts'].map((section) => (
                 <button
                   key={section}
@@ -110,16 +189,18 @@ export default function Index() {
               {projects.map((project, index) => (
                 <div
                   key={project.id}
-                  className={`group cursor-pointer transition-all duration-700 ${
+                  className={`group transition-all duration-700 ${
                     isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
                   }`}
                   style={{ transitionDelay: `${index * 100}ms` }}
-                  onClick={() => setSelectedProject(selectedProject === project.id ? null : project.id)}
                 >
-                  <div className="aspect-[3/4] bg-muted mb-6 overflow-hidden">
-                    {project.images[0] ? (
+                  <div 
+                    className="aspect-[3/4] bg-muted mb-6 overflow-hidden relative cursor-pointer group"
+                    onClick={() => !isEditMode && openGallery(project)}
+                  >
+                    {project.cover ? (
                       <img
-                        src={project.images[0]}
+                        src={project.cover}
                         alt={project.title}
                         className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                       />
@@ -128,15 +209,63 @@ export default function Index() {
                         <Icon name="Image" size={48} className="text-muted-foreground" />
                       </div>
                     )}
+                    
+                    {isEditMode && (
+                      <label className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                        <div className="text-white text-center">
+                          <Icon name="Upload" size={32} className="mx-auto mb-2" />
+                          <span className="text-sm">Загрузить обложку</span>
+                        </div>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleImageUpload(project.id, 'cover', e)}
+                        />
+                      </label>
+                    )}
+
+                    {!isEditMode && project.images.length > 0 && (
+                      <div className="absolute bottom-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-medium">
+                        {project.images.length} фото
+                      </div>
+                    )}
                   </div>
+
                   <h3 className="text-2xl font-serif font-light mb-2">{project.title}</h3>
                   <p className="text-sm text-muted-foreground mb-3">{project.year}</p>
-                  
-                  {selectedProject === project.id && (
-                    <div className="animate-accordion-down overflow-hidden">
-                      <p className="text-sm leading-relaxed text-foreground/80 mt-4">
-                        {project.description}
-                      </p>
+                  <p className="text-sm leading-relaxed text-foreground/80">
+                    {project.description}
+                  </p>
+
+                  {isEditMode && (
+                    <div className="mt-4 space-y-3">
+                      <label className="flex items-center gap-2 px-4 py-2 border border-border rounded-lg hover:bg-muted transition-colors cursor-pointer">
+                        <Icon name="Plus" size={16} />
+                        <span className="text-sm">Добавить фото в галерею</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleImageUpload(project.id, 'gallery', e)}
+                        />
+                      </label>
+
+                      {project.images.length > 0 && (
+                        <div className="grid grid-cols-4 gap-2">
+                          {project.images.map((img, idx) => (
+                            <div key={idx} className="relative aspect-square group">
+                              <img src={img} alt="" className="w-full h-full object-cover rounded" />
+                              <button
+                                onClick={() => removeImage(project.id, idx)}
+                                className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <Icon name="X" size={12} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -212,6 +341,56 @@ export default function Index() {
           </div>
         </section>
       </main>
+
+      <Dialog open={selectedProject !== null} onOpenChange={() => setSelectedProject(null)}>
+        <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 bg-black border-0">
+          {selectedProject && selectedProject.images.length > 0 && (
+            <div className="relative w-full h-full flex items-center justify-center">
+              <button
+                onClick={() => setSelectedProject(null)}
+                className="absolute top-4 right-4 z-10 text-white hover:text-white/70 transition-colors"
+              >
+                <Icon name="X" size={32} />
+              </button>
+
+              <button
+                onClick={prevImage}
+                disabled={currentImageIndex === 0}
+                className="absolute left-4 z-10 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:scale-110 transition-transform"
+              >
+                <Icon name="ChevronLeft" size={48} />
+              </button>
+
+              <button
+                onClick={nextImage}
+                disabled={currentImageIndex === selectedProject.images.length - 1}
+                className="absolute right-4 z-10 text-white disabled:opacity-30 disabled:cursor-not-allowed hover:scale-110 transition-transform"
+              >
+                <Icon name="ChevronRight" size={48} />
+              </button>
+
+              <div className="w-full h-[95vh] flex items-center justify-center p-12">
+                <img
+                  src={selectedProject.images[currentImageIndex]}
+                  alt={`${selectedProject.title} - фото ${currentImageIndex + 1}`}
+                  className="max-w-full max-h-full object-contain"
+                />
+              </div>
+
+              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-white/20 backdrop-blur-sm px-4 py-2 rounded-full">
+                <p className="text-white text-sm font-medium">
+                  {currentImageIndex + 1} / {selectedProject.images.length}
+                </p>
+              </div>
+
+              <div className="absolute top-8 left-8">
+                <h3 className="text-white text-2xl font-serif font-light">{selectedProject.title}</h3>
+                <p className="text-white/70 text-sm mt-1">{selectedProject.year}</p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <footer className="border-t border-border py-8 px-6 lg:px-12">
         <div className="max-w-7xl mx-auto text-center text-sm text-muted-foreground">
