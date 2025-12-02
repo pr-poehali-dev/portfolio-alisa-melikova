@@ -69,6 +69,8 @@ export default function Index() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [storageUsed, setStorageUsed] = useState(0);
+  const [storagePercent, setStoragePercent] = useState(0);
 
   useEffect(() => {
     setIsVisible(true);
@@ -80,12 +82,28 @@ export default function Index() {
         console.error('Failed to load projects:', e);
       }
     }
+    calculateStorageUsage();
   }, []);
+
+  const calculateStorageUsage = () => {
+    let total = 0;
+    for (const key in localStorage) {
+      if (localStorage.hasOwnProperty(key)) {
+        total += localStorage[key].length + key.length;
+      }
+    }
+    const totalMB = (total / 1024 / 1024).toFixed(2);
+    const maxMB = 5;
+    const percent = Math.min((parseFloat(totalMB) / maxMB) * 100, 100);
+    setStorageUsed(parseFloat(totalMB));
+    setStoragePercent(percent);
+  };
 
   const saveProjects = (updatedProjects: Project[]) => {
     setProjects(updatedProjects);
     try {
       localStorage.setItem('portfolio-projects', JSON.stringify(updatedProjects));
+      calculateStorageUsage();
     } catch (e) {
       console.error('Failed to save projects:', e);
       alert('Превышен лимит хранилища. Удалите несколько фотографий.');
@@ -188,6 +206,27 @@ export default function Index() {
               Алиса Меликова
             </h1>
             <div className="flex items-center gap-8">
+              {isEditMode && (
+                <div className="flex items-center gap-3 px-4 py-2 bg-muted rounded-lg">
+                  <Icon name="HardDrive" size={16} className="text-muted-foreground" />
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-2">
+                      <div className="w-32 h-2 bg-background rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full transition-all ${
+                            storagePercent > 80 ? 'bg-red-500' : 
+                            storagePercent > 60 ? 'bg-yellow-500' : 'bg-green-500'
+                          }`}
+                          style={{ width: `${storagePercent}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
+                        {storageUsed.toFixed(1)} / 5 МБ
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
               <button
                 onClick={() => setIsEditMode(!isEditMode)}
                 className="text-sm px-4 py-2 rounded-lg border border-border hover:bg-muted transition-colors"
