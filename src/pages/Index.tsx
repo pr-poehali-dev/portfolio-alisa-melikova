@@ -72,7 +72,59 @@ export default function Index() {
 
   useEffect(() => {
     setIsVisible(true);
+    const saved = localStorage.getItem('portfolio-projects');
+    if (saved) {
+      try {
+        setProjects(JSON.parse(saved));
+      } catch (e) {
+        console.error('Failed to load projects:', e);
+      }
+    }
   }, []);
+
+  const saveProjects = (updatedProjects: Project[]) => {
+    setProjects(updatedProjects);
+    try {
+      localStorage.setItem('portfolio-projects', JSON.stringify(updatedProjects));
+    } catch (e) {
+      console.error('Failed to save projects:', e);
+      alert('Превышен лимит хранилища. Удалите несколько фотографий.');
+    }
+  };
+
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          
+          const maxSize = 1200;
+          if (width > maxSize || height > maxSize) {
+            if (width > height) {
+              height = (height * maxSize) / width;
+              width = maxSize;
+            } else {
+              width = (width * maxSize) / height;
+              height = maxSize;
+            }
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
 
   const scrollToSection = (section: string) => {
     setActiveSection(section);
@@ -80,11 +132,11 @@ export default function Index() {
     element?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleImageUpload = (projectId: string, type: 'cover' | 'gallery', e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (projectId: string, type: 'cover' | 'gallery', e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const imageUrl = URL.createObjectURL(file);
+    const imageUrl = await compressImage(file);
     const updatedProjects = projects.map(p => {
       if (p.id === projectId) {
         if (type === 'cover') {
@@ -95,21 +147,17 @@ export default function Index() {
       }
       return p;
     });
-    setProjects(updatedProjects);
+    saveProjects(updatedProjects);
   };
 
   const removeImage = (projectId: string, imageIndex: number) => {
     const updatedProjects = projects.map(p => {
       if (p.id === projectId) {
-        const imageToRemove = p.images[imageIndex];
-        if (imageToRemove.startsWith('blob:')) {
-          URL.revokeObjectURL(imageToRemove);
-        }
         return { ...p, images: p.images.filter((_, i) => i !== imageIndex) };
       }
       return p;
     });
-    setProjects(updatedProjects);
+    saveProjects(updatedProjects);
   };
 
   const openGallery = (project: Project) => {
