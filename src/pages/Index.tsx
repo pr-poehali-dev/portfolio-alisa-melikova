@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import Icon from '@/components/ui/icon';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { useToast } from '@/hooks/use-toast';
 
 interface Project {
   id: string;
@@ -10,6 +11,9 @@ interface Project {
   cover: string;
   images: string[];
 }
+
+const API_PROJECTS = 'https://functions.poehali.dev/e75025c2-c481-4d91-b76c-592e2e68ebe2';
+const API_UPLOAD = 'https://functions.poehali.dev/3e68882f-f71f-46f8-a827-c06d69e6cbf2';
 
 const initialProjects: Project[] = [
   {
@@ -69,44 +73,59 @@ export default function Index() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [isVisible, setIsVisible] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [storageUsed, setStorageUsed] = useState(0);
-  const [storagePercent, setStoragePercent] = useState(0);
+  const [isUploading, setIsUploading] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     setIsVisible(true);
-    const saved = localStorage.getItem('portfolio-projects');
-    if (saved) {
-      try {
-        setProjects(JSON.parse(saved));
-      } catch (e) {
-        console.error('Failed to load projects:', e);
-      }
-    }
-    calculateStorageUsage();
+    loadProjects();
   }, []);
 
-  const calculateStorageUsage = () => {
-    let total = 0;
-    for (const key in localStorage) {
-      if (localStorage.hasOwnProperty(key)) {
-        total += localStorage[key].length + key.length;
+  const loadProjects = async () => {
+    try {
+      const response = await fetch(API_PROJECTS);
+      const data = await response.json();
+      
+      if (data && data.length > 0) {
+        setProjects(data);
+      } else {
+        await initializeProjects();
       }
+    } catch (error) {
+      console.error('Failed to load projects:', error);
+      toast({
+        title: 'Ошибка загрузки',
+        description: 'Не удалось загрузить проекты',
+        variant: 'destructive'
+      });
     }
-    const totalMB = (total / 1024 / 1024).toFixed(2);
-    const maxMB = 5;
-    const percent = Math.min((parseFloat(totalMB) / maxMB) * 100, 100);
-    setStorageUsed(parseFloat(totalMB));
-    setStoragePercent(percent);
   };
 
-  const saveProjects = (updatedProjects: Project[]) => {
-    setProjects(updatedProjects);
+  const initializeProjects = async () => {
     try {
-      localStorage.setItem('portfolio-projects', JSON.stringify(updatedProjects));
-      calculateStorageUsage();
-    } catch (e) {
-      console.error('Failed to save projects:', e);
-      alert('Превышен лимит хранилища. Удалите несколько фотографий.');
+      for (const project of initialProjects) {
+        await saveProject(project);
+      }
+      await loadProjects();
+    } catch (error) {
+      console.error('Failed to initialize projects:', error);
+    }
+  };
+
+  const saveProject = async (project: Project) => {
+    try {
+      const response = await fetch(API_PROJECTS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(project)
+      });
+      
+      if (!response.ok) throw new Error('Failed to save');
+      
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to save project:', error);
+      throw error;
     }
   };
 
@@ -120,7 +139,7 @@ export default function Index() {
           let width = img.width;
           let height = img.height;
           
-          const maxSize = 1200;
+          const maxSize = 1600;
           if (width > maxSize || height > maxSize) {
             if (width > height) {
               height = (height * maxSize) / width;
@@ -144,6 +163,19 @@ export default function Index() {
     });
   };
 
+  const uploadImageToCloud = async (imageData: string): Promise<string> => {
+    const response = await fetch(API_UPLOAD, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: imageData, type: 'image/jpeg' })
+    });
+    
+    if (!response.ok) throw new Error('Upload failed');
+    
+    const result = await response.json();
+    return result.url;
+  };
+
   const scrollToSection = (section: string) => {
     setActiveSection(section);
     const element = document.getElementById(section);
@@ -154,28 +186,60 @@ export default function Index() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const imageUrl = await compressImage(file);
-    const updatedProjects = projects.map(p => {
-      if (p.id === projectId) {
-        if (type === 'cover') {
-          return { ...p, cover: imageUrl };
-        } else {
-          return { ...p, images: [...p.images, imageUrl] };
+    setIsUploading(true);
+    
+    try {
+      const compressedImage = await compressImage(file);
+      const cloudUrl = await uploadImageToCloud(compressedImage);
+      
+      const updatedProjects = projects.map(p => {
+        if (p.id === projectId) {
+          if (type === 'cover') {
+            return { ...p, cover: cloudUrl };
+          } else {
+            return { ...p, images: [...p.images, cloudUrl] };
+          }
         }
+        return p;
+      });
+      
+      setProjects(updatedProjects);
+      
+      const projectToSave = updatedProjects.find(p => p.id === projectId);
+      if (projectToSave) {
+        await saveProject(projectToSave);
       }
-      return p;
-    });
-    saveProjects(updatedProjects);
+      
+      toast({
+        title: 'Готово!',
+        description: 'Изображение загружено'
+      });
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast({
+        title: 'Ошибка',
+        description: 'Не удалось загрузить изображение',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsUploading(false);
+    }
   };
 
-  const removeImage = (projectId: string, imageIndex: number) => {
+  const removeImage = async (projectId: string, imageIndex: number) => {
     const updatedProjects = projects.map(p => {
       if (p.id === projectId) {
         return { ...p, images: p.images.filter((_, i) => i !== imageIndex) };
       }
       return p;
     });
-    saveProjects(updatedProjects);
+    
+    setProjects(updatedProjects);
+    
+    const projectToSave = updatedProjects.find(p => p.id === projectId);
+    if (projectToSave) {
+      await saveProject(projectToSave);
+    }
   };
 
   const openGallery = (project: Project) => {
@@ -206,25 +270,10 @@ export default function Index() {
               Алиса Меликова
             </h1>
             <div className="flex items-center gap-8">
-              {isEditMode && (
-                <div className="flex items-center gap-3 px-4 py-2 bg-muted rounded-lg">
-                  <Icon name="HardDrive" size={16} className="text-muted-foreground" />
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-2">
-                      <div className="w-32 h-2 bg-background rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full transition-all ${
-                            storagePercent > 80 ? 'bg-red-500' : 
-                            storagePercent > 60 ? 'bg-yellow-500' : 'bg-green-500'
-                          }`}
-                          style={{ width: `${storagePercent}%` }}
-                        />
-                      </div>
-                      <span className="text-xs text-muted-foreground whitespace-nowrap">
-                        {storageUsed.toFixed(1)} / 5 МБ
-                      </span>
-                    </div>
-                  </div>
+              {isUploading && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Icon name="Loader2" size={16} className="animate-spin" />
+                  <span>Загрузка...</span>
                 </div>
               )}
               <button
@@ -299,6 +348,7 @@ export default function Index() {
                           accept="image/*"
                           className="hidden"
                           onChange={(e) => handleImageUpload(project.id, 'cover', e)}
+                          disabled={isUploading}
                         />
                       </label>
                     )}
@@ -326,6 +376,7 @@ export default function Index() {
                           accept="image/*"
                           className="hidden"
                           onChange={(e) => handleImageUpload(project.id, 'gallery', e)}
+                          disabled={isUploading}
                         />
                       </label>
 
@@ -337,6 +388,7 @@ export default function Index() {
                               <button
                                 onClick={() => removeImage(project.id, idx)}
                                 className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                disabled={isUploading}
                               >
                                 <Icon name="X" size={12} />
                               </button>
