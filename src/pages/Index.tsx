@@ -72,16 +72,7 @@ export default function Index() {
 
   useEffect(() => {
     setIsVisible(true);
-    const saved = localStorage.getItem('portfolio-projects');
-    if (saved) {
-      setProjects(JSON.parse(saved));
-    }
   }, []);
-
-  const saveProjects = (updatedProjects: Project[]) => {
-    setProjects(updatedProjects);
-    localStorage.setItem('portfolio-projects', JSON.stringify(updatedProjects));
-  };
 
   const scrollToSection = (section: string) => {
     setActiveSection(section);
@@ -93,32 +84,32 @@ export default function Index() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const imageUrl = event.target?.result as string;
-      const updatedProjects = projects.map(p => {
-        if (p.id === projectId) {
-          if (type === 'cover') {
-            return { ...p, cover: imageUrl };
-          } else {
-            return { ...p, images: [...p.images, imageUrl] };
-          }
+    const imageUrl = URL.createObjectURL(file);
+    const updatedProjects = projects.map(p => {
+      if (p.id === projectId) {
+        if (type === 'cover') {
+          return { ...p, cover: imageUrl };
+        } else {
+          return { ...p, images: [...p.images, imageUrl] };
         }
-        return p;
-      });
-      saveProjects(updatedProjects);
-    };
-    reader.readAsDataURL(file);
+      }
+      return p;
+    });
+    setProjects(updatedProjects);
   };
 
   const removeImage = (projectId: string, imageIndex: number) => {
     const updatedProjects = projects.map(p => {
       if (p.id === projectId) {
+        const imageToRemove = p.images[imageIndex];
+        if (imageToRemove.startsWith('blob:')) {
+          URL.revokeObjectURL(imageToRemove);
+        }
         return { ...p, images: p.images.filter((_, i) => i !== imageIndex) };
       }
       return p;
     });
-    saveProjects(updatedProjects);
+    setProjects(updatedProjects);
   };
 
   const openGallery = (project: Project) => {
